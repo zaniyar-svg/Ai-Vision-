@@ -1,0 +1,9 @@
+{
+  "name": "AI Vision People Counting",
+  "short_name": "AI Vision",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#080e19",
+  "theme_color": "#0b1321",
+  "description": "Multi-camera AI people counting dashboard"
+}

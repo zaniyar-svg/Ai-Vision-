@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1321"><link rel="manifest" href="manifest.webmanifest">
+<title>AI Vision — Multi-Camera</title>
+<style>
+:root{color-scheme:dark;--bg:#080e19;--panel:#111d2e;--muted:#91a3bb;--line:#263950;--cyan:#42d7e8;--green:#35d18a;--red:#ff6875}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,#17334b 0,#080e19 43%);font:15px Inter,system-ui,Arial;color:#f3f7fc}
+main{max-width:1180px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+.brand{display:flex;align-items:center;gap:12px}.logo{width:43px;height:43px;border-radius:14px;background:linear-gradient(135deg,#27c9dd,#5269f2);display:grid;place-items:center;font-weight:900;color:#07111e}
+h1{font-size:20px;margin:0}.sub{font-size:12px;color:var(--muted);margin-top:4px}.tag{border:1px solid #2c5267;border-radius:99px;padding:8px 12px;color:#a8edf2;font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:15px}.stat,.panel{background:linear-gradient(145deg,#14243a,#0e1929);border:1px solid var(--line);border-radius:17px}
+.stat{padding:15px}.stat small{color:var(--muted)}.num{font-size:30px;font-weight:850;margin-top:5px}.green{color:var(--green)}.red{color:var(--red)}.blue{color:var(--cyan)}
+.layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(270px,.85fr);gap:14px}.panel{padding:15px;min-width:0}
+.head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}.head strong{font-size:14px}
+.stage{position:relative;background:#02060b;border-radius:12px;overflow:hidden;aspect-ratio:16/9;min-height:190px}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}canvas{pointer-events:none}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}button{border:0;border-radius:10px;padding:10px 13px;background:#20334d;color:white;font-weight:700;cursor:pointer}button.primary{background:linear-gradient(100deg,#24c5d8,#506cf0);color:#07111c}button:disabled{opacity:.4}
+label{font-size:12px;color:var(--muted)}input{width:100%;margin:6px 0 10px;background:#091321;border:1px solid var(--line);border-radius:9px;padding:10px;color:white}
+.status,.hint{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}.camera-list{display:grid;gap:8px}.camera{padding:11px;border:1px solid var(--line);border-radius:11px;background:#0b1625;display:flex;justify-content:space-between;gap:10px;align-items:center}.camera b{font-size:13px}.camera small{display:block;color:var(--muted);margin-top:4px}.live{color:var(--green);font-size:11px}.idle{color:#f3c36c;font-size:11px}
+@media(max-width:760px){main{padding:14px}.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.num{font-size:26px}.top{align-items:flex-start}.tag{font-size:10px}}
+</style></head>
+<body><main>
+<header class="top"><div class="brand"><div class="logo">AI</div><div><h1>AI Vision</h1><div class="sub">MULTI-CAMERA PEOPLE COUNTING · V0.2</div></div></div><div class="tag">● MULTI-DEVICE READY</div></header>
+<section class="stats">
+ <div class="stat"><small>TOTAL ENTERED · IN</small><div class="num green" id="inCount">0</div></div>
+ <div class="stat"><small>TOTAL EXITED · OUT</small><div class="num red" id="outCount">0</div></div>
+ <div class="stat"><small>ESTIMATED INSIDE</small><div class="num blue" id="insideCount">0</div></div>
+ <div class="stat"><small>ACTIVE CAMERAS</small><div class="num" id="activeCount">0</div></div>
+</section>
+<section class="layout">
+<div class="panel">
+ <div class="head"><strong>Camera setup & live detection</strong><span class="sub" id="camState">Stopped</span></div>
+ <div class="stage"><video id="video" autoplay muted playsinline></video><canvas id="overlay"></canvas></div>
+ <div class="actions"><button class="primary" id="startBtn">Start camera</button><button id="switchBtn" disabled>Switch front / rear</button><button id="stopBtn" disabled>Stop</button></div>
+ <div class="status" id="status">Set API address and a unique camera ID, then check connection.</div>
+</div>
+<aside class="panel">
+ <div class="head"><strong>Device configuration</strong><span class="sub">This device</span></div>
+ <label for="apiUrl">Backend API URL</label><input id="apiUrl" value="http://localhost:8000" spellcheck="false">
+ <label for="cameraId">Unique Camera ID</label><input id="cameraId" value="phone-01" maxlength="48">
+ <div class="actions"><button id="checkBtn">Check API</button><button id="resetBtn">Reset this camera</button></div>
+ <p class="hint">Use a different ID on every phone, such as entrance-1, entrance-2, checkout-1. All devices must send to the same backend.</p>
+ <div class="head" style="margin-top:18px"><strong>Connected cameras</strong><span class="sub" id="cameraCount">0 devices</span></div>
+ <div class="camera-list" id="cameraList"><div class="hint">No camera sessions yet.</div></div>
+ <p class="hint">Privacy: video frames are processed in memory and are not saved by this starter.</p>
+</aside></section></main>
+<script>
+const video=document.getElementById('video'),canvas=document.getElementById('overlay'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);let stream=null,sendTimer=null,pollTimer=null,busy=false,facing='environment';
+const api=()=>$('apiUrl').value.trim().replace(/\/+$/,'');
+const cameraId=()=>$('cameraId').value.trim();
+function status(t){$('status').textContent=t}
+function updateStats(t){$('inCount').textContent=t.in??0;$('outCount').textContent=t.out??0;$('insideCount').textContent=t.inside??0;$('activeCount').textContent=t.active_cameras??0}
+function draw(d){let w=video.videoWidth,h=video.videoHeight;if(!w||!h)return;canvas.width=w;canvas.height=h;ctx.clearRect(0,0,w,h);let y=d.line_y??h*.55;ctx.strokeStyle='#ffd34d';ctx.lineWidth=Math.max(2,w/450);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();ctx.font=`${Math.max(14,w/48)}px Arial`;for(const p of(d.detections||[])){let [x1,y1,x2,y2]=p.box;ctx.strokeStyle='#35e5a2';ctx.lineWidth=2;ctx.strokeRect(x1,y1,x2-x1,y2-y1);ctx.fillStyle='#35e5a2';ctx.fillText(p.id==null?'Person':'ID '+p.id,x1,Math.max(18,y1-5));}}
+async function sendFrame(){if(busy||!stream||video.readyState<2)return;busy=true;try{let c=document.createElement('canvas');c.width=640;c.height=Math.round(640*video.videoHeight/video.videoWidth);c.getContext('2d').drawImage(video,0,0,c.width,c.height);let blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));let fd=new FormData();fd.append('camera_id',cameraId());fd.append('file',blob,'frame.jpg');let res=await fetch(api()+'/api/frame',{method:'POST',body:fd});if(!res.ok)throw new Error(await res.text());let d=await res.json();updateStats(d);draw(d);$('camState').textContent='● AI Live';}catch(e){status('Frame error: '+e.message)}finally{busy=false}}
+async function refreshCameras(){try{let r=await fetch(api()+'/api/cameras');if(!r.ok)return;let d=await r.json();updateStats(d.totals);$('cameraCount').textContent=d.cameras.length+' devices';$('cameraList').innerHTML=d.cameras.length?d.cameras.map(c=>`<div class="camera"><div><b>${escapeHtml(c.camera_id)}</b><small>IN ${c.in} · OUT ${c.out} · INSIDE ${c.inside}</small></div><span class="${c.active?'live':'idle'}">${c.active?'● LIVE':'○ IDLE'}</span></div>`).join(''):'<div class="hint">No camera sessions yet.</div>'}catch(e){}}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function start(){if(!cameraId()){status('Enter a unique Camera ID first.');return}try{let h=await fetch(api()+'/api/health');if(!h.ok)throw new Error('API unavailable');stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();$('startBtn').disabled=true;$('stopBtn').disabled=false;$('switchBtn').disabled=false;sendTimer=setInterval(sendFrame,500);status('Camera connected. AI detection starting…');}catch(e){status('Could not start: '+e.message+'. Check HTTPS, permission, and API URL.')}}
+async function switchCamera(){if(!stream)return;facing=facing==='environment'?'user':'environment';stream.getTracks().forEach(t=>t.stop());stream=null;try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;await video.play();status('Switched to '+(facing==='environment'?'rear':'front')+' camera.')}catch(e){status('Camera switch failed: '+e.message)}}
+function stop(){if(sendTimer)clearInterval(sendTimer);sendTimer=null;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;$('startBtn').disabled=false;$('stopBtn').disabled=true;$('switchBtn').disabled=true;$('camState').textContent='Stopped';ctx.clearRect(0,0,canvas.width,canvas.height);status('Camera stopped.')}
+$('startBtn').onclick=start;$('stopBtn').onclick=stop;$('switchBtn').onclick=switchCamera;
+$('checkBtn').onclick=async()=>{try{let r=await fetch(api()+'/api/health');let d=await r.json();status('Connected to '+d.service+' v'+d.version)}catch(e){status('API connection failed: '+e.message)}};
+$('resetBtn').onclick=async()=>{let fd=new FormData();fd.append('camera_id',cameraId());try{let r=await fetch(api()+'/api/reset',{method:'POST',body:fd});if(!r.ok)throw new Error(await r.text());status('Counters reset for '+cameraId());refreshCameras()}catch(e){status('Reset failed: '+e.message)}};
+pollTimer=setInterval(refreshCameras,2500);refreshCameras();window.addEventListener('beforeunload',stop);
+if('serviceWorker'in navigator && location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script></body></html>
